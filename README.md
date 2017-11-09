@@ -14,3 +14,30 @@ https://github.com/yinjihuan/transaction-mq/blob/master/cxytiandi-transaction-mq
 数据库用mysql,ORM框架自己封装的：https://github.com/yinjihuan/smjdbctemplate
 
 
+# 使用
+注入消息队列的dubbo服务即可发送消息
+
+我们在A服务中修改信息，同时需要修改B服务中的数据，这个时候就产生分布式事务了
+```
+@Reference(interfaceClass = TransactionMessageRpcService.class, version = "1.0.0", check = false, mock = "true")
+
+@Transactional(rollbackFor = Exception.class)
+public void update(LouDong louDong) {
+    LouDong old = super.getById("id", louDong.getId());
+    super.update(louDong, "id");
+		
+    //发送消息，修改房号中的小区名称
+    TransactionMessage message = new TransactionMessage();
+    message.setQueue("fangjia.dis_name_queue");
+    message.setCreateDate(new Date()); 
+    message.setSendSystem(Constants.FJ_LD_SYS_NAME);
+    message.setMessage(JsonUtils.toJson(
+		    new UpdateHouseNameDto(louDong.getCity(), louDong.getRegion(), old.getName(), louDong.getName())
+    ));
+    boolean reuslt = transactionMessageRpcService.sendMessage(message);
+    if (!reuslt) {
+	    throw new RuntimeException("回滚事务");
+    }
+}
+
+```
